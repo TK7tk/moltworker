@@ -36,8 +36,14 @@ export function buildEnvVars(env: MoltbotEnv): Record<string, string> {
     envVars.ANTHROPIC_BASE_URL = env.ANTHROPIC_BASE_URL;
   }
 
-  // Map MOLTBOT_GATEWAY_TOKEN to OPENCLAW_GATEWAY_TOKEN (container expects this name)
-  if (env.MOLTBOT_GATEWAY_TOKEN) envVars.OPENCLAW_GATEWAY_TOKEN = env.MOLTBOT_GATEWAY_TOKEN;
+  // Gateway token auth is handled at the Worker level (CF Access).
+  // Don't pass the token to the container — the Cloudflare Workers runtime
+  // may strip URL query params from WebSocket upgrade requests forwarded via
+  // tcpPort.fetch, causing the gateway to report "token missing" even though
+  // the Worker injects ?token= into the request URL. By not setting
+  // OPENCLAW_GATEWAY_TOKEN, the gateway starts without --token and accepts
+  // all connections from the trusted proxy (the Worker).
+  // if (env.MOLTBOT_GATEWAY_TOKEN) envVars.OPENCLAW_GATEWAY_TOKEN = env.MOLTBOT_GATEWAY_TOKEN;
   if (env.DEV_MODE) envVars.OPENCLAW_DEV_MODE = env.DEV_MODE;
   if (env.TELEGRAM_BOT_TOKEN) envVars.TELEGRAM_BOT_TOKEN = env.TELEGRAM_BOT_TOKEN;
   if (env.TELEGRAM_DM_POLICY) envVars.TELEGRAM_DM_POLICY = env.TELEGRAM_DM_POLICY;

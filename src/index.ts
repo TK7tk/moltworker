@@ -57,9 +57,9 @@ function validateRequiredEnv(env: MoltbotEnv): string[] {
   const missing: string[] = [];
   const isTestMode = env.DEV_MODE === 'true' || env.E2E_TEST_MODE === 'true';
 
-  if (!env.MOLTBOT_GATEWAY_TOKEN) {
-    missing.push('MOLTBOT_GATEWAY_TOKEN');
-  }
+  // MOLTBOT_GATEWAY_TOKEN is no longer required — CF Access handles auth.
+  // The gateway inside the container runs without --token, accepting all
+  // connections from the Worker (trusted proxy).
 
   // CF Access vars not required in dev/test mode since auth is skipped
   if (!isTestMode) {
@@ -289,15 +289,9 @@ app.all('*', async (c) => {
       console.log('[WS] URL:', url.pathname + redactedSearch);
     }
 
-    // Inject gateway token into WebSocket request if not already present.
-    // CF Access redirects strip query params, so authenticated users lose ?token=.
-    // Since the user already passed CF Access auth, we inject the token server-side.
-    let wsRequest = request;
-    if (c.env.MOLTBOT_GATEWAY_TOKEN && !url.searchParams.has('token')) {
-      const tokenUrl = new URL(url.toString());
-      tokenUrl.searchParams.set('token', c.env.MOLTBOT_GATEWAY_TOKEN);
-      wsRequest = new Request(tokenUrl.toString(), request);
-    }
+    // Gateway token injection is no longer needed — the container runs without
+    // --token since CF Access handles authentication at the Worker level.
+    const wsRequest = request;
 
     // Get WebSocket connection to the container
     const containerResponse = await sandbox.wsConnect(wsRequest, MOLTBOT_PORT);

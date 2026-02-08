@@ -127,6 +127,9 @@ app.use('*', async (c, next) => {
   const redactedSearch = redactSensitiveParams(url);
   console.log(`[REQ] ${c.req.method} ${url.pathname}${redactedSearch}`);
   console.log(`[REQ] Has ANTHROPIC_API_KEY: ${!!c.env.ANTHROPIC_API_KEY}`);
+  console.log(`[REQ] Has MOLTBOT_GATEWAY_TOKEN: ${!!c.env.MOLTBOT_GATEWAY_TOKEN}`);
+  console.log(`[REQ] MOLTBOT_GATEWAY_TOKEN length: ${c.env.MOLTBOT_GATEWAY_TOKEN?.length ?? 0}`);
+  console.log(`[REQ] Has CLOUDFLARE_AI_GATEWAY_API_KEY: ${!!c.env.CLOUDFLARE_AI_GATEWAY_API_KEY}`);
   console.log(`[REQ] DEV_MODE: ${c.env.DEV_MODE}`);
   console.log(`[REQ] DEBUG_ROUTES: ${c.env.DEBUG_ROUTES}`);
   await next();

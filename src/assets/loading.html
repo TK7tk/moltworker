@@ -188,8 +188,9 @@
             statusEl.textContent = 'Checking status... (poll #' + pollCount + ')';
           }
 
-          // Continue polling
-          setTimeout(checkStatus, 2000);
+          // Continue polling — use longer interval to avoid overloading
+          // the Durable Object while the background gateway startup runs
+          setTimeout(checkStatus, 5000);
         } catch (err) {
           consecutiveErrors++;
 
@@ -200,13 +201,13 @@
           } else {
             statusEl.textContent =
               'Retrying... (' + consecutiveErrors + '/' + maxConsecutiveErrors + ')';
-            setTimeout(checkStatus, 3000);
+            setTimeout(checkStatus, 5000);
           }
         }
       }
 
-      // Start polling after a brief delay
-      setTimeout(checkStatus, 1000);
+      // Start polling after initial delay — give gateway time to start
+      setTimeout(checkStatus, 3000);
     </script>
   </body>
 </html>

@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { MOLTBOT_PORT } from '../config';
-import { findExistingMoltbotProcess } from '../gateway';
 
 /**
  * Public routes - NO Cloudflare Access authentication required
@@ -30,30 +29,27 @@ publicRoutes.get('/logo-small.png', (c) => {
   return c.env.ASSETS.fetch(c.req.raw);
 });
 
-// GET /api/status - Public health check for gateway status (no auth required)
+// GET /api/status - Lightweight gateway readiness check (no auth required)
+// IMPORTANT: This must NOT call sandbox.listProcesses() or any heavy DO
+// operation. The loading page polls this every few seconds, and heavy DO
+// calls here block the background ensureMoltbotGateway() from completing
+// (DO serializes requests), creating a deadlock.
 publicRoutes.get('/api/status', async (c) => {
   const sandbox = c.get('sandbox');
 
   try {
-    const process = await findExistingMoltbotProcess(sandbox);
-    if (!process) {
-      return c.json({ ok: false, status: 'not_running' });
+    // Lightweight check: just try TCP connect to the gateway port.
+    // Avoid listProcesses() which competes with background gateway startup.
+    const probe = await sandbox.containerFetch(
+      new Request('http://localhost/api/health'),
+      MOLTBOT_PORT,
+    );
+    if (probe.ok) {
+      return c.json({ ok: true, status: 'running' });
     }
-
-    // Process exists, check if it's actually responding
-    // Try to reach the gateway with a short timeout
-    try {
-      await process.waitForPort(18789, { mode: 'tcp', timeout: 5000 });
-      return c.json({ ok: true, status: 'running', processId: process.id });
-    } catch {
-      return c.json({ ok: false, status: 'not_responding', processId: process.id });
-    }
-  } catch (err) {
-    return c.json({
-      ok: false,
-      status: 'error',
-      error: err instanceof Error ? err.message : 'Unknown error',
-    });
+    return c.json({ ok: false, status: 'not_responding' });
+  } catch {
+    return c.json({ ok: false, status: 'starting' });
   }
 });
 

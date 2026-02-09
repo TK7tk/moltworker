@@ -182,6 +182,11 @@ config.gateway.trustedProxies = ['10.1.0.0'];
 if (process.env.OPENCLAW_GATEWAY_TOKEN) {
     config.gateway.auth = config.gateway.auth || {};
     config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
+} else {
+    // CF Access handles auth — remove any token from R2-restored config
+    if (config.gateway.auth) {
+        delete config.gateway.auth.token;
+    }
 }
 
 if (process.env.OPENCLAW_DEV_MODE === 'true') {

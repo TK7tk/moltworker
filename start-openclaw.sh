@@ -183,10 +183,9 @@ if (process.env.OPENCLAW_GATEWAY_TOKEN) {
     config.gateway.auth = config.gateway.auth || {};
     config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
 } else {
-    // CF Access handles auth — remove any token from R2-restored config
-    if (config.gateway.auth) {
-        delete config.gateway.auth.token;
-    }
+    // CF Access handles auth — remove entire auth block from config
+    // so the gateway doesn't think token auth is configured.
+    delete config.gateway.auth;
 }
 
 if (process.env.OPENCLAW_DEV_MODE === 'true') {

@@ -234,10 +234,12 @@ app.all('*', async (c) => {
   const request = c.req.raw;
   const url = new URL(request.url);
 
-  console.log('[PROXY] Handling request:', url.pathname);
+  console.log('[CATCH-ALL] Hit:', url.pathname);
 
   // Check if gateway is already running
+  console.log('[CATCH-ALL] About to call findExistingMoltbotProcess...');
   const existingProcess = await findExistingMoltbotProcess(sandbox);
+  console.log('[CATCH-ALL] findExistingMoltbotProcess returned:', existingProcess?.id ?? 'null', 'status:', existingProcess?.status ?? 'N/A');
   const isGatewayReady = existingProcess !== null && existingProcess.status === 'running';
 
   // For browser requests (non-WebSocket, non-API), show loading page if gateway isn't ready
@@ -248,11 +250,13 @@ app.all('*', async (c) => {
     console.log('[PROXY] Gateway not ready, serving loading page');
 
     // Start the gateway in the background (don't await)
+    console.log('[PROXY] About to call waitUntil(ensureMoltbotGateway)');
     c.executionCtx.waitUntil(
       ensureMoltbotGateway(sandbox, c.env).catch((err: Error) => {
         console.error('[PROXY] Background gateway start failed:', err);
       }),
     );
+    console.log('[PROXY] waitUntil called, returning loading page');
 
     // Return the loading page immediately
     return c.html(loadingPageHtml);

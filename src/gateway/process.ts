@@ -54,12 +54,18 @@ export async function findExistingMoltbotProcess(sandbox: Sandbox): Promise<Proc
  * @returns The running gateway process
  */
 export async function ensureMoltbotGateway(sandbox: Sandbox, env: MoltbotEnv): Promise<Process> {
+  console.log('[Gateway] ensureMoltbotGateway called');
+
   // Mount R2 storage for persistent data (non-blocking if not configured)
   // R2 is used as a backup - the startup script will restore from it on boot
+  console.log('[Gateway] About to mount R2...');
   await mountR2Storage(sandbox, env);
+  console.log('[Gateway] R2 mount done');
 
   // Check if gateway is already running or starting
+  console.log('[Gateway] About to call findExistingMoltbotProcess...');
   const existingProcess = await findExistingMoltbotProcess(sandbox);
+  console.log('[Gateway] findExistingMoltbotProcess returned:', existingProcess?.id ?? 'null');
   if (existingProcess) {
     console.log(
       'Found existing gateway process:',

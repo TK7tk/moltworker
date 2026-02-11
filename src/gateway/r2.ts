@@ -6,8 +6,10 @@ import { R2_MOUNT_PATH, getR2BucketName } from '../config';
  * Check if R2 is already mounted by looking at the mount table
  */
 async function isR2Mounted(sandbox: Sandbox): Promise<boolean> {
+  console.log('[R2] isR2Mounted: about to startProcess...');
   try {
     const proc = await sandbox.startProcess(`mount | grep "s3fs on ${R2_MOUNT_PATH}"`);
+    console.log('[R2] isR2Mounted: startProcess returned, proc id:', proc.id);
     // Wait for the command to complete
     let attempts = 0;
     while (proc.status === 'running' && attempts < 10) {
@@ -34,19 +36,23 @@ async function isR2Mounted(sandbox: Sandbox): Promise<boolean> {
  * @returns true if mounted successfully, false otherwise
  */
 export async function mountR2Storage(sandbox: Sandbox, env: MoltbotEnv): Promise<boolean> {
+  console.log('[R2] mountR2Storage called');
+
   // Skip if R2 credentials are not configured
   if (!env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY || !env.CF_ACCOUNT_ID) {
     console.log(
-      'R2 storage not configured (missing R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, or CF_ACCOUNT_ID)',
+      '[R2] storage not configured (missing R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, or CF_ACCOUNT_ID)',
     );
     return false;
   }
 
   // Check if already mounted first - this avoids errors and is faster
+  console.log('[R2] About to check isR2Mounted...');
   if (await isR2Mounted(sandbox)) {
-    console.log('R2 bucket already mounted at', R2_MOUNT_PATH);
+    console.log('[R2] bucket already mounted at', R2_MOUNT_PATH);
     return true;
   }
+  console.log('[R2] Not mounted yet, proceeding to mount...');
 
   const bucketName = getR2BucketName(env);
   try {

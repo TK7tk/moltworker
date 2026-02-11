@@ -401,4 +401,127 @@ debug.get('/container-config', async (c) => {
   }
 });
 
+// GET /debug/test-llm - Test LLM API directly from inside the container
+// Reads config, extracts API key/baseUrl, calls the API with a simple prompt
+debug.get('/test-llm', async (c) => {
+  const sandbox = c.get('sandbox');
+
+  try {
+    // Run a single script inside the container that:
+    // 1. Reads openclaw.json
+    // 2. Extracts provider config
+    // 3. Makes a curl call to the LLM API
+    // 4. Returns the raw response
+    const testScript = `node -e "
+const fs = require('fs');
+const config = JSON.parse(fs.readFileSync('/root/.openclaw/openclaw.json', 'utf8'));
+const providers = config.models && config.models.providers || {};
+const providerNames = Object.keys(providers);
+
+if (providerNames.length === 0) {
+  console.log(JSON.stringify({ error: 'No providers configured' }));
+  process.exit(0);
+}
+
+// Find the active provider
+const defaultModel = config.agents && config.agents.defaults && config.agents.defaults.model;
+const primaryModel = defaultModel && defaultModel.primary || '';
+const activeProvider = providerNames.find(n => primaryModel.startsWith(n)) || providerNames[0];
+const provider = providers[activeProvider];
+
+console.log(JSON.stringify({
+  step: 'config',
+  activeProvider,
+  primaryModel,
+  baseUrl: provider.baseUrl,
+  api: provider.api,
+  hasApiKey: !!provider.apiKey,
+  apiKeyPrefix: provider.apiKey ? provider.apiKey.substring(0, 8) + '...' : null,
+  models: provider.models
+}));
+"`;
+
+    const configProc = await sandbox.startProcess(testScript);
+    let attempts = 0;
+    while (attempts < 20) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (configProc.status !== 'running') break;
+      attempts++;
+    }
+    const configLogs = await configProc.getLogs();
+    const configStdout = (configLogs.stdout || '').trim();
+    const configStderr = (configLogs.stderr || '').trim();
+
+    let configInfo;
+    try {
+      configInfo = JSON.parse(configStdout);
+    } catch {
+      return c.json({
+        status: 'error',
+        message: 'Failed to parse config',
+        stdout: configStdout,
+        stderr: configStderr,
+      });
+    }
+
+    if (configInfo.error) {
+      return c.json({ status: 'error', ...configInfo });
+    }
+
+    // Now make the actual API call using curl inside the container
+    const baseUrl = configInfo.baseUrl;
+    const isAnthropic = configInfo.api === 'anthropic-messages';
+
+    let curlCmd: string;
+    if (isAnthropic) {
+      curlCmd = `curl -s -w '\\n---HTTP_STATUS:%{http_code}---' -X POST "${baseUrl}/messages" -H "Content-Type: application/json" -H "x-api-key: $(node -e "const c=JSON.parse(require('fs').readFileSync('/root/.openclaw/openclaw.json','utf8'));const p=Object.values(c.models.providers)[0];console.log(p.apiKey)")" -H "anthropic-version: 2023-06-01" -d '{"model":"${configInfo.models?.[0]?.id || 'unknown'}","messages":[{"role":"user","content":"Say hello in 5 words"}],"max_tokens":50}' 2>&1`;
+    } else {
+      // OpenAI-compatible endpoint (Google AI, etc.)
+      curlCmd = `curl -s -w '\\n---HTTP_STATUS:%{http_code}---' -X POST "${baseUrl}/chat/completions" -H "Content-Type: application/json" -H "Authorization: Bearer $(node -e "const c=JSON.parse(require('fs').readFileSync('/root/.openclaw/openclaw.json','utf8'));const ps=c.models.providers;const k=Object.keys(ps);const p=ps[k.find(n=>'${configInfo.primaryModel}'.startsWith(n))||k[0]];console.log(p.apiKey)")" -d '{"model":"${configInfo.models?.[0]?.id || 'unknown'}","messages":[{"role":"user","content":"Say hello in 5 words"}],"max_tokens":50}' 2>&1`;
+    }
+
+    const curlProc = await sandbox.startProcess(curlCmd);
+    let curlAttempts = 0;
+    while (curlAttempts < 30) {
+      await new Promise((r) => setTimeout(r, 1000));
+      if (curlProc.status !== 'running') break;
+      curlAttempts++;
+    }
+    const curlLogs = await curlProc.getLogs();
+    const curlStdout = (curlLogs.stdout || '').trim();
+    const curlStderr = (curlLogs.stderr || '').trim();
+
+    // Extract HTTP status code from curl output
+    let httpStatus = '';
+    let responseBody = curlStdout;
+    const statusMatch = curlStdout.match(/---HTTP_STATUS:(\d+)---/);
+    if (statusMatch) {
+      httpStatus = statusMatch[1];
+      responseBody = curlStdout.replace(/\n?---HTTP_STATUS:\d+---/, '').trim();
+    }
+
+    let parsedResponse;
+    try {
+      parsedResponse = JSON.parse(responseBody);
+    } catch {
+      // not JSON
+    }
+
+    return c.json({
+      status: 'ok',
+      config: configInfo,
+      llm_test: {
+        http_status: httpStatus,
+        response: parsedResponse || responseBody,
+        stderr: curlStderr || undefined,
+        curl_status: curlProc.status,
+        wait_seconds: curlAttempts,
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return c.json({ status: 'error', message: errorMessage }, 500);
+  }
+});
+
 export { debug };

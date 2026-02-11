@@ -219,6 +219,10 @@ if (process.env.CF_AI_GATEWAY_MODEL) {
     let baseUrl;
     if (accountId && gatewayId) {
         baseUrl = 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/' + gwProvider;
+        // Google AI needs the OpenAI-compatible sub-path so that
+        // POST {baseUrl}/chat/completions lands on the correct endpoint:
+        // generativelanguage.googleapis.com/v1beta/openai/chat/completions
+        if (gwProvider === 'google-ai') baseUrl += '/v1beta/openai';
         if (gwProvider === 'workers-ai') baseUrl += '/v1';
     } else if (gwProvider === 'workers-ai' && process.env.CF_ACCOUNT_ID) {
         baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + process.env.CF_ACCOUNT_ID + '/ai/v1';

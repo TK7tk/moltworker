@@ -217,12 +217,14 @@ if (process.env.CF_AI_GATEWAY_MODEL) {
     const apiKey = process.env.CLOUDFLARE_AI_GATEWAY_API_KEY;
 
     let baseUrl;
-    if (accountId && gatewayId) {
+    if (gwProvider === 'google-ai') {
+        // Bypass AI Gateway for Google AI — use Google's direct OpenAI-compatible
+        // endpoint.  AI Gateway URL routing for google-ai is unreliable and causes
+        // silent empty responses.  The direct endpoint is well-tested:
+        // POST https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+        baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
+    } else if (accountId && gatewayId) {
         baseUrl = 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/' + gwProvider;
-        // Google AI needs the OpenAI-compatible sub-path so that
-        // POST {baseUrl}/chat/completions lands on the correct endpoint:
-        // generativelanguage.googleapis.com/v1beta/openai/chat/completions
-        if (gwProvider === 'google-ai') baseUrl += '/v1beta/openai';
         if (gwProvider === 'workers-ai') baseUrl += '/v1';
     } else if (gwProvider === 'workers-ai' && process.env.CF_ACCOUNT_ID) {
         baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + process.env.CF_ACCOUNT_ID + '/ai/v1';
@@ -243,7 +245,7 @@ if (process.env.CF_AI_GATEWAY_MODEL) {
         config.agents = config.agents || {};
         config.agents.defaults = config.agents.defaults || {};
         config.agents.defaults.model = { primary: providerName + '/' + modelId };
-        console.log('AI Gateway model override: provider=' + providerName + ' model=' + modelId + ' via ' + baseUrl);
+        console.log('Model override: provider=' + providerName + ' model=' + modelId + ' baseUrl=' + baseUrl);
     } else {
         console.warn('CF_AI_GATEWAY_MODEL set but missing required config (account ID, gateway ID, or API key)');
     }

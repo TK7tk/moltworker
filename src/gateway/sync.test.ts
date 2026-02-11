@@ -25,8 +25,7 @@ describe('syncToR2', () => {
     });
 
     it('returns error when mount fails', async () => {
-      const { sandbox, startProcessMock, mountBucketMock } = createMockSandbox();
-      startProcessMock.mockResolvedValue(createMockProcess(''));
+      const { sandbox, mountBucketMock } = createMockSandbox();
       mountBucketMock.mockRejectedValue(new Error('Mount failed'));
 
       const env = createMockEnvWithR2();
@@ -40,9 +39,10 @@ describe('syncToR2', () => {
 
   describe('sanity checks', () => {
     it('returns error when source has no config file', async () => {
+      // mountR2Storage uses mountBucket (not startProcess), so startProcess
+      // calls start from the config file check in syncToR2.
       const { sandbox, startProcessMock } = createMockSandbox();
       startProcessMock
-        .mockResolvedValueOnce(createMockProcess('s3fs on /data/moltbot type fuse.s3fs\n'))
         .mockResolvedValueOnce(createMockProcess('', { exitCode: 1 })) // No openclaw.json
         .mockResolvedValueOnce(createMockProcess('', { exitCode: 1 })); // No clawdbot.json either
 
@@ -60,9 +60,8 @@ describe('syncToR2', () => {
       const { sandbox, startProcessMock } = createMockSandbox();
       const timestamp = '2026-01-27T12:00:00+00:00';
 
-      // Calls: mount check, check openclaw.json, rsync, cat timestamp
+      // Calls: check openclaw.json, rsync, cat timestamp
       startProcessMock
-        .mockResolvedValueOnce(createMockProcess('s3fs on /data/moltbot type fuse.s3fs\n'))
         .mockResolvedValueOnce(createMockProcess('ok'))
         .mockResolvedValueOnce(createMockProcess(''))
         .mockResolvedValueOnce(createMockProcess(timestamp));
@@ -78,9 +77,8 @@ describe('syncToR2', () => {
     it('returns error when rsync fails (no timestamp created)', async () => {
       const { sandbox, startProcessMock } = createMockSandbox();
 
-      // Calls: mount check, check openclaw.json, rsync (fails), cat timestamp (empty)
+      // Calls: check openclaw.json, rsync (fails), cat timestamp (empty)
       startProcessMock
-        .mockResolvedValueOnce(createMockProcess('s3fs on /data/moltbot type fuse.s3fs\n'))
         .mockResolvedValueOnce(createMockProcess('ok'))
         .mockResolvedValueOnce(createMockProcess('', { exitCode: 1 }))
         .mockResolvedValueOnce(createMockProcess(''));
@@ -97,8 +95,8 @@ describe('syncToR2', () => {
       const { sandbox, startProcessMock } = createMockSandbox();
       const timestamp = '2026-01-27T12:00:00+00:00';
 
+      // Calls: check openclaw.json, rsync, cat timestamp
       startProcessMock
-        .mockResolvedValueOnce(createMockProcess('s3fs on /data/moltbot type fuse.s3fs\n'))
         .mockResolvedValueOnce(createMockProcess('ok'))
         .mockResolvedValueOnce(createMockProcess(''))
         .mockResolvedValueOnce(createMockProcess(timestamp));
@@ -107,8 +105,8 @@ describe('syncToR2', () => {
 
       await syncToR2(sandbox, env);
 
-      // Third call should be rsync to openclaw/ R2 prefix
-      const rsyncCall = startProcessMock.mock.calls[2][0];
+      // Second call should be rsync to openclaw/ R2 prefix
+      const rsyncCall = startProcessMock.mock.calls[1][0];
       expect(rsyncCall).toContain('rsync');
       expect(rsyncCall).toContain('--no-times');
       expect(rsyncCall).toContain('--delete');

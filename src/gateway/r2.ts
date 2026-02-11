@@ -3,37 +3,16 @@ import type { MoltbotEnv } from '../types';
 import { R2_MOUNT_PATH, getR2BucketName } from '../config';
 
 /**
- * Check if R2 is already mounted by looking at the mount table
- */
-async function isR2Mounted(sandbox: Sandbox): Promise<boolean> {
-  console.log('[R2] isR2Mounted: about to startProcess...');
-  try {
-    const proc = await sandbox.startProcess(`mount | grep "s3fs on ${R2_MOUNT_PATH}"`);
-    console.log('[R2] isR2Mounted: startProcess returned, proc id:', proc.id);
-    // Wait for the command to complete
-    let attempts = 0;
-    while (proc.status === 'running' && attempts < 10) {
-      // eslint-disable-next-line no-await-in-loop -- intentional sequential polling
-      await new Promise((r) => setTimeout(r, 200));
-      attempts++;
-    }
-    const logs = await proc.getLogs();
-    // If stdout has content, the mount exists
-    const mounted = !!(logs.stdout && logs.stdout.includes('s3fs'));
-    console.log('isR2Mounted check:', mounted, 'stdout:', logs.stdout?.slice(0, 100));
-    return mounted;
-  } catch (err) {
-    console.log('isR2Mounted error:', err);
-    return false;
-  }
-}
-
-/**
  * Mount R2 bucket for persistent storage
+ *
+ * Strategy: call mountBucket directly.  If the bucket is already mounted
+ * the SDK throws "already in use" which we treat as success.  This avoids
+ * spawning a shell process (`mount | grep`) whose output is unreliably
+ * captured by the sandbox startProcess API.
  *
  * @param sandbox - The sandbox instance
  * @param env - Worker environment bindings
- * @returns true if mounted successfully, false otherwise
+ * @returns true if mounted successfully (or already mounted), false otherwise
  */
 export async function mountR2Storage(sandbox: Sandbox, env: MoltbotEnv): Promise<boolean> {
   console.log('[R2] mountR2Storage called');
@@ -46,39 +25,29 @@ export async function mountR2Storage(sandbox: Sandbox, env: MoltbotEnv): Promise
     return false;
   }
 
-  // Check if already mounted first - this avoids errors and is faster
-  console.log('[R2] About to check isR2Mounted...');
-  if (await isR2Mounted(sandbox)) {
-    console.log('[R2] bucket already mounted at', R2_MOUNT_PATH);
-    return true;
-  }
-  console.log('[R2] Not mounted yet, proceeding to mount...');
-
   const bucketName = getR2BucketName(env);
   try {
-    console.log('Mounting R2 bucket', bucketName, 'at', R2_MOUNT_PATH);
+    console.log('[R2] Mounting bucket', bucketName, 'at', R2_MOUNT_PATH);
     await sandbox.mountBucket(bucketName, R2_MOUNT_PATH, {
       endpoint: `https://${env.CF_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      // Pass credentials explicitly since we use R2_* naming instead of AWS_*
       credentials: {
         accessKeyId: env.R2_ACCESS_KEY_ID,
         secretAccessKey: env.R2_SECRET_ACCESS_KEY,
       },
     });
-    console.log('R2 bucket mounted successfully - moltbot data will persist across sessions');
+    console.log('[R2] bucket mounted successfully');
     return true;
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    console.log('R2 mount error:', errorMessage);
+    const msg = err instanceof Error ? err.message : String(err);
 
-    // Check again if it's mounted - the error might be misleading
-    if (await isR2Mounted(sandbox)) {
-      console.log('R2 bucket is mounted despite error');
+    // "already in use" means the bucket is already mounted — this is success
+    if (msg.includes('already in use')) {
+      console.log('[R2] bucket already mounted at', R2_MOUNT_PATH);
       return true;
     }
 
-    // Don't fail if mounting fails - moltbot can still run without persistent storage
-    console.error('Failed to mount R2 bucket:', err);
+    // Any other error is a genuine failure — but don't block gateway startup
+    console.error('[R2] Failed to mount bucket:', msg);
     return false;
   }
 }

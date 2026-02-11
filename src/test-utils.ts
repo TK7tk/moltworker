@@ -61,20 +61,14 @@ export function createMockSandbox(
     processes?: Partial<Process>[];
   } = {},
 ): MockSandbox {
-  const mountBucketMock = vi.fn().mockResolvedValue(undefined);
+  // When mounted: true, mountBucket throws "already in use" (mimics real behavior)
+  const mountBucketMock = options.mounted
+    ? vi.fn().mockRejectedValue(new Error('InvalidMountConfigError: Mount path "/data/moltbot" is already in use by bucket "moltbot-data".'))
+    : vi.fn().mockResolvedValue(undefined);
   const listProcessesMock = vi.fn().mockResolvedValue(options.processes || []);
   const containerFetchMock = vi.fn();
 
-  // Default: return empty stdout (not mounted), unless mounted: true
-  const startProcessMock = vi
-    .fn()
-    .mockResolvedValue(
-      options.mounted
-        ? createMockProcess(
-            's3fs on /data/moltbot type fuse.s3fs (rw,nosuid,nodev,relatime,user_id=0,group_id=0)\n',
-          )
-        : createMockProcess(''),
-    );
+  const startProcessMock = vi.fn().mockResolvedValue(createMockProcess(''));
 
   const sandbox = {
     mountBucket: mountBucketMock,

@@ -3,7 +3,6 @@ import { mountR2Storage } from './r2';
 import {
   createMockEnv,
   createMockEnvWithR2,
-  createMockProcess,
   createMockSandbox,
   suppressConsole,
 } from '../test-utils';
@@ -103,14 +102,14 @@ describe('mountR2Storage', () => {
       );
     });
 
-    it('returns true immediately when bucket is already mounted', async () => {
+    it('returns true when bucket is already mounted (already in use error)', async () => {
       const { sandbox, mountBucketMock } = createMockSandbox({ mounted: true });
       const env = createMockEnvWithR2();
 
       const result = await mountR2Storage(sandbox, env);
 
       expect(result).toBe(true);
-      expect(mountBucketMock).not.toHaveBeenCalled();
+      expect(mountBucketMock).toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith('[R2] bucket already mounted at', '/data/moltbot');
     });
 
@@ -120,42 +119,24 @@ describe('mountR2Storage', () => {
 
       await mountR2Storage(sandbox, env);
 
-      expect(console.log).toHaveBeenCalledWith(
-        'R2 bucket mounted successfully - moltbot data will persist across sessions',
-      );
+      expect(console.log).toHaveBeenCalledWith('[R2] bucket mounted successfully');
     });
   });
 
   describe('error handling', () => {
-    it('returns false when mountBucket throws and mount check fails', async () => {
-      const { sandbox, mountBucketMock, startProcessMock } = createMockSandbox({ mounted: false });
-      mountBucketMock.mockRejectedValue(new Error('Mount failed'));
-      startProcessMock
-        .mockResolvedValueOnce(createMockProcess(''))
-        .mockResolvedValueOnce(createMockProcess(''));
+    it('returns false when mountBucket throws a non-mount error', async () => {
+      const { sandbox, mountBucketMock } = createMockSandbox({ mounted: false });
+      mountBucketMock.mockRejectedValue(new Error('Network timeout'));
 
       const env = createMockEnvWithR2();
 
       const result = await mountR2Storage(sandbox, env);
 
       expect(result).toBe(false);
-      expect(console.error).toHaveBeenCalledWith('Failed to mount R2 bucket:', expect.any(Error));
-    });
-
-    it('returns true if mount fails but check shows it is actually mounted', async () => {
-      const { sandbox, mountBucketMock, startProcessMock } = createMockSandbox();
-      startProcessMock
-        .mockResolvedValueOnce(createMockProcess(''))
-        .mockResolvedValueOnce(createMockProcess('s3fs on /data/moltbot type fuse.s3fs\n'));
-
-      mountBucketMock.mockRejectedValue(new Error('Transient error'));
-
-      const env = createMockEnvWithR2();
-
-      const result = await mountR2Storage(sandbox, env);
-
-      expect(result).toBe(true);
-      expect(console.log).toHaveBeenCalledWith('R2 bucket is mounted despite error');
+      expect(console.error).toHaveBeenCalledWith(
+        '[R2] Failed to mount bucket:',
+        'Network timeout',
+      );
     });
   });
 });

@@ -188,10 +188,12 @@ if (process.env.OPENCLAW_GATEWAY_TOKEN) {
     delete config.gateway.auth;
 }
 
-if (process.env.OPENCLAW_DEV_MODE === 'true') {
-    config.gateway.controlUi = config.gateway.controlUi || {};
-    config.gateway.controlUi.allowInsecureAuth = true;
-}
+// Always allow insecure auth for the Control UI (bypasses device pairing).
+// This is safe because Cloudflare Access authenticates all external users
+// at the Worker level before requests reach the gateway.
+// DEV_MODE is no longer required for this — CF Access is the auth layer.
+config.gateway.controlUi = config.gateway.controlUi || {};
+config.gateway.controlUi.allowInsecureAuth = true;
 
 // Legacy AI Gateway base URL override:
 // ANTHROPIC_BASE_URL is picked up natively by the Anthropic SDK,

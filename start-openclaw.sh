@@ -125,7 +125,11 @@ if [ ! -f "$CONFIG_FILE" ]; then
     echo "No existing config found, running openclaw onboard..."
 
     AUTH_ARGS=""
-    if [ -n "$CLOUDFLARE_AI_GATEWAY_API_KEY" ] && [ -n "$CF_AI_GATEWAY_ACCOUNT_ID" ] && [ -n "$CF_AI_GATEWAY_GATEWAY_ID" ]; then
+    # When using google-ai provider, prefer the native Gemini onboard path
+    # so OpenClaw uses its built-in google SDK (not the buggy openai-completions adapter)
+    if [ -n "$GEMINI_API_KEY" ]; then
+        AUTH_ARGS="--auth-choice gemini-api-key --gemini-api-key $GEMINI_API_KEY"
+    elif [ -n "$CLOUDFLARE_AI_GATEWAY_API_KEY" ] && [ -n "$CF_AI_GATEWAY_ACCOUNT_ID" ] && [ -n "$CF_AI_GATEWAY_GATEWAY_ID" ]; then
         AUTH_ARGS="--auth-choice cloudflare-ai-gateway-api-key \
             --cloudflare-ai-gateway-account-id $CF_AI_GATEWAY_ACCOUNT_ID \
             --cloudflare-ai-gateway-gateway-id $CF_AI_GATEWAY_GATEWAY_ID \
@@ -206,6 +210,7 @@ config.gateway.controlUi.allowInsecureAuth = true;
 //   workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast
 //   openai/gpt-4o
 //   anthropic/claude-sonnet-4-5
+//   google-ai/gemini-3-flash-preview  (uses native google provider)
 if (process.env.CF_AI_GATEWAY_MODEL) {
     const raw = process.env.CF_AI_GATEWAY_MODEL;
     const slashIdx = raw.indexOf('/');
@@ -216,38 +221,45 @@ if (process.env.CF_AI_GATEWAY_MODEL) {
     const gatewayId = process.env.CF_AI_GATEWAY_GATEWAY_ID;
     const apiKey = process.env.CLOUDFLARE_AI_GATEWAY_API_KEY;
 
-    let baseUrl;
-    if (gwProvider === 'google-ai') {
-        // Bypass AI Gateway for Google AI — use Google's direct OpenAI-compatible
-        // endpoint.  AI Gateway URL routing for google-ai is unreliable and causes
-        // silent empty responses.  The direct endpoint is well-tested:
-        // POST https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
-        baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
-    } else if (accountId && gatewayId) {
-        baseUrl = 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/' + gwProvider;
-        if (gwProvider === 'workers-ai') baseUrl += '/v1';
-    } else if (gwProvider === 'workers-ai' && process.env.CF_ACCOUNT_ID) {
-        baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + process.env.CF_ACCOUNT_ID + '/ai/v1';
-    }
-
-    if (baseUrl && apiKey) {
-        const api = gwProvider === 'anthropic' ? 'anthropic-messages' : 'openai-completions';
-        const providerName = 'cf-ai-gw-' + gwProvider;
-
-        config.models = config.models || {};
-        config.models.providers = config.models.providers || {};
-        config.models.providers[providerName] = {
-            baseUrl: baseUrl,
-            apiKey: apiKey,
-            api: api,
-            models: [{ id: modelId, name: modelId, contextWindow: 131072, maxTokens: 8192 }],
-        };
+    if (gwProvider === 'google-ai' && process.env.GEMINI_API_KEY) {
+        // Use OpenClaw's built-in "google" provider instead of the custom
+        // openai-completions adapter.  The openai-completions streaming parser
+        // has a known bug that drops response content (openclaw/openclaw#9900).
+        // The native google provider uses the Google Gemini SDK directly and
+        // handles streaming correctly.
         config.agents = config.agents || {};
         config.agents.defaults = config.agents.defaults || {};
-        config.agents.defaults.model = { primary: providerName + '/' + modelId };
-        console.log('Model override: provider=' + providerName + ' model=' + modelId + ' baseUrl=' + baseUrl);
+        config.agents.defaults.model = { primary: 'google/' + modelId };
+        console.log('Model override (native google): model=google/' + modelId);
     } else {
-        console.warn('CF_AI_GATEWAY_MODEL set but missing required config (account ID, gateway ID, or API key)');
+        // For all other providers, create a custom provider entry
+        let baseUrl;
+        if (accountId && gatewayId) {
+            baseUrl = 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/' + gwProvider;
+            if (gwProvider === 'workers-ai') baseUrl += '/v1';
+        } else if (gwProvider === 'workers-ai' && process.env.CF_ACCOUNT_ID) {
+            baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + process.env.CF_ACCOUNT_ID + '/ai/v1';
+        }
+
+        if (baseUrl && apiKey) {
+            const api = gwProvider === 'anthropic' ? 'anthropic-messages' : 'openai-completions';
+            const providerName = 'cf-ai-gw-' + gwProvider;
+
+            config.models = config.models || {};
+            config.models.providers = config.models.providers || {};
+            config.models.providers[providerName] = {
+                baseUrl: baseUrl,
+                apiKey: apiKey,
+                api: api,
+                models: [{ id: modelId, name: modelId, contextWindow: 131072, maxTokens: 8192 }],
+            };
+            config.agents = config.agents || {};
+            config.agents.defaults = config.agents.defaults || {};
+            config.agents.defaults.model = { primary: providerName + '/' + modelId };
+            console.log('Model override: provider=' + providerName + ' model=' + modelId + ' baseUrl=' + baseUrl);
+        } else {
+            console.warn('CF_AI_GATEWAY_MODEL set but missing required config (account ID, gateway ID, or API key)');
+        }
     }
 }
 

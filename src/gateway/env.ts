@@ -24,6 +24,14 @@ export function buildEnvVars(env: MoltbotEnv): Record<string, string> {
   if (env.ANTHROPIC_API_KEY) envVars.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
   if (env.OPENAI_API_KEY) envVars.OPENAI_API_KEY = env.OPENAI_API_KEY;
 
+  // Google Gemini native provider: when CF_AI_GATEWAY_MODEL starts with
+  // "google-ai/", pass the API key as GEMINI_API_KEY so OpenClaw's built-in
+  // google provider handles it natively (avoiding the buggy openai-completions
+  // streaming adapter — see openclaw/openclaw#9900).
+  if (env.CF_AI_GATEWAY_MODEL?.startsWith('google-ai/') && env.CLOUDFLARE_AI_GATEWAY_API_KEY) {
+    envVars.GEMINI_API_KEY = env.CLOUDFLARE_AI_GATEWAY_API_KEY;
+  }
+
   // Legacy AI Gateway support: AI_GATEWAY_BASE_URL + AI_GATEWAY_API_KEY
   // When set, these override direct keys for backward compatibility
   if (env.AI_GATEWAY_API_KEY && env.AI_GATEWAY_BASE_URL) {

@@ -146,7 +146,7 @@ app.use('*', async (c, next) => {
     return;
   }
   const options = buildSandboxOptions(c.env);
-  const sandbox = getSandbox(c.env.Sandbox, 'moltbot-v6', options);
+  const sandbox = getSandbox(c.env.Sandbox, 'moltbot-v7', options);
   c.set('sandbox', sandbox);
   await next();
 });
@@ -471,7 +471,7 @@ async function scheduled(
   _ctx: ExecutionContext,
 ): Promise<void> {
   const options = buildSandboxOptions(env);
-  const sandbox = getSandbox(env.Sandbox, 'moltbot-v6', options);
+  const sandbox = getSandbox(env.Sandbox, 'moltbot-v7', options);
 
   const gatewayProcess = await findExistingMoltbotProcess(sandbox);
   if (!gatewayProcess) {

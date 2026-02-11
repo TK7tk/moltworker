@@ -26,7 +26,7 @@ import { getSandbox, Sandbox, type SandboxOptions } from '@cloudflare/sandbox';
 import type { AppEnv, MoltbotEnv } from './types';
 import { MOLTBOT_PORT } from './config';
 import { createAccessMiddleware } from './auth';
-import { ensureMoltbotGateway, findExistingMoltbotProcess, syncToR2 } from './gateway';
+import { ensureMoltbotGateway, findExistingMoltbotProcess, startGatewayBackground, syncToR2 } from './gateway';
 import { publicRoutes, api, adminUi, debug, cdp } from './routes';
 import { redactSensitiveParams } from './utils/logging';
 import loadingPageHtml from './assets/loading.html';
@@ -249,10 +249,12 @@ app.all('*', async (c) => {
   if (!isGatewayReady && !isWebSocketRequest && acceptsHtml) {
     console.log('[PROXY] Gateway not ready, serving loading page');
 
-    // Start the gateway in the background (don't await)
-    console.log('[PROXY] About to call waitUntil(ensureMoltbotGateway)');
+    // Start the gateway in the background (fire-and-forget).
+    // Uses startGatewayBackground which does NOT call waitForPort,
+    // keeping well within the ~30s waitUntil time limit.
+    console.log('[PROXY] About to call waitUntil(startGatewayBackground)');
     c.executionCtx.waitUntil(
-      ensureMoltbotGateway(sandbox, c.env).catch((err: Error) => {
+      startGatewayBackground(sandbox, c.env).catch((err: Error) => {
         console.error('[PROXY] Background gateway start failed:', err);
       }),
     );

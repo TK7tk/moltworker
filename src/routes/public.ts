@@ -30,12 +30,25 @@ publicRoutes.get('/logo-small.png', (c) => {
 });
 
 // GET /api/status - Lightweight gateway readiness check (no auth required)
-// TEMPORARY: Complete dummy response to eliminate ALL DO/sandbox access.
-// This isolates whether /api/status polling was causing a deadlock with
-// the background ensureMoltbotGateway() call.
-publicRoutes.get('/api/status', (c) => {
-  console.log('[STATUS] /api/status called - returning dummy (no sandbox access)');
-  return c.json({ ok: false, status: 'starting' });
+// Uses containerFetch to probe the gateway port without heavy DO operations.
+// The background startGatewayBackground() only does R2 mount + process start
+// (no waitForPort), so there is no long-running DO task to compete with.
+publicRoutes.get('/api/status', async (c) => {
+  const sandbox = c.get('sandbox');
+
+  try {
+    const probe = await sandbox.containerFetch(
+      new Request('http://localhost/api/health'),
+      MOLTBOT_PORT,
+    );
+    if (probe.ok) {
+      console.log('[STATUS] Gateway is ready!');
+      return c.json({ ok: true, status: 'running' });
+    }
+    return c.json({ ok: false, status: 'not_responding' });
+  } catch {
+    return c.json({ ok: false, status: 'starting' });
+  }
 });
 
 // GET /_admin/assets/* - Admin UI static assets (CSS, JS need to load for login redirect)

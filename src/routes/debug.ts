@@ -401,6 +401,89 @@ debug.get('/container-config', async (c) => {
   }
 });
 
+// GET /debug/test-api - Test LLM API directly from the WORKER (no container needed)
+// Uses Worker env vars to call Google AI / OpenAI compatible endpoint
+debug.get('/test-api', async (c) => {
+  const model = c.req.query('model') || c.env.CF_AI_GATEWAY_MODEL || '';
+  const apiKey = c.env.CLOUDFLARE_AI_GATEWAY_API_KEY || '';
+  const accountId = c.env.CF_AI_GATEWAY_ACCOUNT_ID || '';
+  const gatewayId = c.env.CF_AI_GATEWAY_GATEWAY_ID || '';
+
+  if (!model) {
+    return c.json({ status: 'error', message: 'No CF_AI_GATEWAY_MODEL configured' });
+  }
+  if (!apiKey) {
+    return c.json({ status: 'error', message: 'No CLOUDFLARE_AI_GATEWAY_API_KEY configured' });
+  }
+
+  const slashIdx = model.indexOf('/');
+  const gwProvider = model.substring(0, slashIdx);
+  const modelId = model.substring(slashIdx + 1);
+
+  // Determine the base URL (same logic as start-openclaw.sh)
+  let baseUrl: string;
+  if (gwProvider === 'google-ai') {
+    baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
+  } else if (accountId && gatewayId) {
+    baseUrl = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/${gwProvider}`;
+    if (gwProvider === 'workers-ai') baseUrl += '/v1';
+  } else {
+    return c.json({ status: 'error', message: 'Cannot determine base URL' });
+  }
+
+  const endpoint = `${baseUrl}/chat/completions`;
+
+  const configInfo = {
+    gwProvider,
+    modelId,
+    baseUrl,
+    endpoint,
+    apiKeyPrefix: apiKey.substring(0, 8) + '...',
+  };
+
+  try {
+    const startTime = Date.now();
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [{ role: 'user', content: 'Say hello in 5 words' }],
+        max_tokens: 50,
+      }),
+    });
+    const elapsed = Date.now() - startTime;
+
+    const responseText = await response.text();
+    let responseJson;
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch {
+      // not JSON
+    }
+
+    return c.json({
+      status: 'ok',
+      config: configInfo,
+      llm_response: {
+        http_status: response.status,
+        elapsed_ms: elapsed,
+        response: responseJson || responseText,
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return c.json({
+      status: 'fetch_error',
+      config: configInfo,
+      error: errorMessage,
+    });
+  }
+});
+
 // GET /debug/test-llm - Test LLM API directly from inside the container
 // Reads config, extracts API key/baseUrl, calls the API with a simple prompt
 debug.get('/test-llm', async (c) => {

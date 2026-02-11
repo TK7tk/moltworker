@@ -29,26 +29,19 @@ publicRoutes.get('/logo-small.png', (c) => {
   return c.env.ASSETS.fetch(c.req.raw);
 });
 
-// GET /api/status - Lightweight gateway readiness check (no auth required)
-// Uses containerFetch to probe the gateway port without heavy DO operations.
-// The background startGatewayBackground() only does R2 mount + process start
-// (no waitForPort), so there is no long-running DO task to compete with.
-publicRoutes.get('/api/status', async (c) => {
-  const sandbox = c.get('sandbox');
-
-  try {
-    const probe = await sandbox.containerFetch(
-      new Request('http://localhost/api/health'),
-      MOLTBOT_PORT,
-    );
-    if (probe.ok) {
-      console.log('[STATUS] Gateway is ready!');
-      return c.json({ ok: true, status: 'running' });
-    }
-    return c.json({ ok: false, status: 'not_responding' });
-  } catch {
-    return c.json({ ok: false, status: 'starting' });
-  }
+// GET /api/status - Gateway readiness check (no auth, no sandbox)
+//
+// CRITICAL: This endpoint must NEVER touch the Durable Object (sandbox).
+// The loading page polls it every 5 seconds.  If each poll triggers DO
+// operations (setSandboxName, setKeepAlive, containerFetch) they starve
+// the background startGatewayBackground() task, preventing the gateway
+// from ever starting (DO deadlock).
+//
+// Instead, return a static "starting" response.  The loading page will
+// eventually get redirected to the real UI when the catch-all route
+// detects the running gateway and serves the proxied page.
+publicRoutes.get('/api/status', (c) => {
+  return c.json({ ok: false, status: 'starting' });
 });
 
 // GET /_admin/assets/* - Admin UI static assets (CSS, JS need to load for login redirect)

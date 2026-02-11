@@ -135,8 +135,16 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// Middleware: Initialize sandbox for all requests
+// Middleware: Initialize sandbox for all requests (except lightweight endpoints)
 app.use('*', async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  // Skip sandbox init for endpoints that must never touch the DO.
+  // /api/status is polled every 5 s by the loading page — if it goes
+  // through the DO it starves the background gateway startup task.
+  if (path === '/api/status' || path === '/sandbox-health') {
+    await next();
+    return;
+  }
   const options = buildSandboxOptions(c.env);
   const sandbox = getSandbox(c.env.Sandbox, 'moltbot-v5', options);
   c.set('sandbox', sandbox);

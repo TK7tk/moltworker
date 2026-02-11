@@ -152,62 +152,27 @@
 
     <script>
       const statusEl = document.getElementById('status');
-      const titleEl = document.getElementById('title');
-      const errorEl = document.getElementById('error');
-      let pollCount = 0;
-      let consecutiveErrors = 0;
-      const maxConsecutiveErrors = 5;
 
-      async function checkStatus() {
-        pollCount++;
+      // Instead of polling /api/status (which touches the Durable Object and
+      // causes a deadlock with the background gateway startup), we simply
+      // reload the entire page after a delay.  On reload the catch-all route
+      // checks if the gateway is running — if yes it proxies through, if no
+      // it shows this loading page again.
+      const RELOAD_DELAY_MS = 15000; // 15 seconds between reloads
+      let elapsed = 0;
 
-        try {
-          const response = await fetch('/api/status');
-          const data = await response.json();
-          consecutiveErrors = 0;
+      const timer = setInterval(() => {
+        elapsed += 1000;
+        const remaining = Math.max(0, Math.ceil((RELOAD_DELAY_MS - elapsed) / 1000));
+        statusEl.textContent =
+          'Starting container and gateway... reloading in ' + remaining + 's';
+      }, 1000);
 
-          if (data.ok && data.status === 'running') {
-            // Container is ready! Reload the page
-            titleEl.innerHTML = '<span class="ready">Moltworker is ready!</span>';
-            statusEl.textContent = 'Redirecting...';
-            document.querySelector('.spinner').style.display = 'none';
-
-            // Small delay so user sees the "ready" message
-            setTimeout(() => {
-              window.location.reload();
-            }, 500);
-            return;
-          }
-
-          // Update status message based on state
-          if (data.status === 'not_running') {
-            statusEl.textContent = 'Container is starting up...';
-          } else if (data.status === 'not_responding') {
-            statusEl.textContent = 'Container started, waiting for gateway...';
-          } else {
-            statusEl.textContent = 'Checking status... (poll #' + pollCount + ')';
-          }
-
-          // Continue polling — use longer interval to avoid overloading
-          // the Durable Object while the background gateway startup runs
-          setTimeout(checkStatus, 5000);
-        } catch (err) {
-          consecutiveErrors++;
-
-          if (consecutiveErrors >= maxConsecutiveErrors) {
-            errorEl.textContent = 'Unable to reach server. Please refresh the page.';
-            errorEl.style.display = 'block';
-            statusEl.textContent = 'Connection lost';
-          } else {
-            statusEl.textContent =
-              'Retrying... (' + consecutiveErrors + '/' + maxConsecutiveErrors + ')';
-            setTimeout(checkStatus, 5000);
-          }
-        }
-      }
-
-      // Start polling after initial delay — give gateway time to start
-      setTimeout(checkStatus, 3000);
+      setTimeout(() => {
+        clearInterval(timer);
+        statusEl.textContent = 'Reloading...';
+        window.location.reload();
+      }, RELOAD_DELAY_MS);
     </script>
   </body>
 </html>

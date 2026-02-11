@@ -121,17 +121,11 @@ const app = new Hono<AppEnv>();
 // MIDDLEWARE: Applied to ALL routes
 // =============================================================================
 
-// Middleware: Log every request
+// Middleware: Log every request (method + path only, no secret metadata)
 app.use('*', async (c, next) => {
   const url = new URL(c.req.url);
   const redactedSearch = redactSensitiveParams(url);
   console.log(`[REQ] ${c.req.method} ${url.pathname}${redactedSearch}`);
-  console.log(`[REQ] Has ANTHROPIC_API_KEY: ${!!c.env.ANTHROPIC_API_KEY}`);
-  console.log(`[REQ] Has MOLTBOT_GATEWAY_TOKEN: ${!!c.env.MOLTBOT_GATEWAY_TOKEN}`);
-  console.log(`[REQ] MOLTBOT_GATEWAY_TOKEN length: ${c.env.MOLTBOT_GATEWAY_TOKEN?.length ?? 0}`);
-  console.log(`[REQ] Has CLOUDFLARE_AI_GATEWAY_API_KEY: ${!!c.env.CLOUDFLARE_AI_GATEWAY_API_KEY}`);
-  console.log(`[REQ] DEV_MODE: ${c.env.DEV_MODE}`);
-  console.log(`[REQ] DEBUG_ROUTES: ${c.env.DEBUG_ROUTES}`);
   await next();
 });
 
@@ -449,10 +443,7 @@ app.all('*', async (c) => {
   const httpResponse = await sandbox.containerFetch(request, MOLTBOT_PORT);
   console.log('[HTTP] Response status:', httpResponse.status);
 
-  // Add debug header to verify worker handled the request
   const newHeaders = new Headers(httpResponse.headers);
-  newHeaders.set('X-Worker-Debug', 'proxy-to-moltbot');
-  newHeaders.set('X-Debug-Path', url.pathname);
 
   return new Response(httpResponse.body, {
     status: httpResponse.status,

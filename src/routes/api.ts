@@ -13,6 +13,11 @@ import { R2_MOUNT_PATH } from '../config';
 // CLI commands can take 10-15 seconds to complete due to WebSocket connection overhead
 const CLI_TIMEOUT_MS = 20000;
 
+/** Validate that a string is safe to use in shell commands (alphanumeric + hyphens + underscores only) */
+function isShellSafe(value: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(value);
+}
+
 /**
  * API routes
  * - /api/admin/* - Protected admin API routes (Cloudflare Access required)
@@ -90,6 +95,10 @@ adminApi.post('/devices/:requestId/approve', async (c) => {
     return c.json({ error: 'requestId is required' }, 400);
   }
 
+  if (!isShellSafe(requestId)) {
+    return c.json({ error: 'Invalid requestId format' }, 400);
+  }
+
   try {
     // Ensure moltbot is running first
     await ensureMoltbotGateway(sandbox, c.env);
@@ -161,6 +170,10 @@ adminApi.post('/devices/approve-all', async (c) => {
     const results: Array<{ requestId: string; success: boolean; error?: string }> = [];
 
     for (const device of pending) {
+      if (!device.requestId || !isShellSafe(device.requestId)) {
+        results.push({ requestId: device.requestId, success: false, error: 'Invalid requestId format' });
+        continue;
+      }
       try {
         // eslint-disable-next-line no-await-in-loop -- sequential device approval required
         const approveProc = await sandbox.startProcess(

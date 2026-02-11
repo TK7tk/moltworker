@@ -1902,16 +1902,27 @@ function sendEvent(ws: WebSocket, method: string, params?: Record<string, unknow
 }
 
 /**
- * Constant-time string comparison to prevent timing attacks
+ * Constant-time string comparison to prevent timing attacks.
+ * Length mismatch still performs a dummy comparison to avoid leaking string length via timing.
  */
 function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+
+  if (aBytes.length !== bBytes.length) {
+    // Perform a dummy comparison against itself to keep timing constant
+    const dummy = new Uint8Array(aBytes.length);
+    let result = 0;
+    for (let i = 0; i < aBytes.length; i++) {
+      result |= aBytes[i] ^ dummy[i];
+    }
     return false;
   }
 
   let result = 0;
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < aBytes.length; i++) {
+    result |= aBytes[i] ^ bBytes[i];
   }
   return result === 0;
 }

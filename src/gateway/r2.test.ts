@@ -58,7 +58,7 @@ describe('mountR2Storage', () => {
 
       expect(result).toBe(false);
       expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining('R2 storage not configured'),
+        expect.stringContaining('[R2] storage not configured'),
       );
     });
   });
@@ -111,7 +111,7 @@ describe('mountR2Storage', () => {
 
       expect(result).toBe(true);
       expect(mountBucketMock).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('R2 bucket already mounted at', '/data/moltbot');
+      expect(console.log).toHaveBeenCalledWith('[R2] bucket already mounted at', '/data/moltbot');
     });
 
     it('logs success message when mounted successfully', async () => {

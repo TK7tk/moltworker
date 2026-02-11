@@ -138,7 +138,7 @@ app.use('*', async (c, next) => {
 // Middleware: Initialize sandbox for all requests
 app.use('*', async (c, next) => {
   const options = buildSandboxOptions(c.env);
-  const sandbox = getSandbox(c.env.Sandbox, 'moltbot-v2', options);
+  const sandbox = getSandbox(c.env.Sandbox, 'moltbot-v3', options);
   c.set('sandbox', sandbox);
   await next();
 });
@@ -298,9 +298,15 @@ app.all('*', async (c) => {
       console.log('[WS] URL:', url.pathname + redactedSearch);
     }
 
-    // Gateway token injection is no longer needed — the container runs without
-    // --token since CF Access handles authentication at the Worker level.
-    const wsRequest = request;
+    // Inject gateway token into the WebSocket request so the container gateway
+    // accepts the connection. The token is required because --bind lan mandates auth.
+    // CF Access handles external user auth; this is internal Worker-to-gateway auth.
+    let wsRequest = request;
+    if (c.env.MOLTBOT_GATEWAY_TOKEN) {
+      const wsUrl = new URL(request.url);
+      wsUrl.searchParams.set('token', c.env.MOLTBOT_GATEWAY_TOKEN);
+      wsRequest = new Request(wsUrl.toString(), request);
+    }
 
     // Get WebSocket connection to the container
     const containerResponse = await sandbox.wsConnect(wsRequest, MOLTBOT_PORT);
@@ -457,7 +463,7 @@ async function scheduled(
   _ctx: ExecutionContext,
 ): Promise<void> {
   const options = buildSandboxOptions(env);
-  const sandbox = getSandbox(env.Sandbox, 'moltbot-v2', options);
+  const sandbox = getSandbox(env.Sandbox, 'moltbot-v3', options);
 
   const gatewayProcess = await findExistingMoltbotProcess(sandbox);
   if (!gatewayProcess) {

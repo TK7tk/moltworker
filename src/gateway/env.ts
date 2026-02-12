@@ -61,5 +61,12 @@ export function buildEnvVars(env: MoltbotEnv): Record<string, string> {
   if (env.CDP_SECRET) envVars.CDP_SECRET = env.CDP_SECRET;
   if (env.WORKER_URL) envVars.WORKER_URL = env.WORKER_URL;
 
+  // Set ALLOW_INSECURE_AUTH=true only when external auth is confirmed:
+  // CF Access is configured (both TEAM_DOMAIN and AUD set), or a gateway token is set.
+  // When neither is present, the container will require device pairing.
+  const hasCfAccess = !!(env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD);
+  const hasGatewayToken = !!env.MOLTBOT_GATEWAY_TOKEN;
+  envVars.ALLOW_INSECURE_AUTH = hasCfAccess || hasGatewayToken ? 'true' : 'false';
+
   return envVars;
 }

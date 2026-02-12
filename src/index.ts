@@ -28,6 +28,7 @@ import { MOLTBOT_PORT } from './config';
 import { createAccessMiddleware } from './auth';
 import { ensureMoltbotGateway, findExistingMoltbotProcess, startGatewayBackground, syncToR2 } from './gateway';
 import { publicRoutes, api, adminUi, debug, cdp } from './routes';
+import { createRateLimiter } from './middleware/rate-limit';
 import { redactSensitiveParams } from './utils/logging';
 import loadingPageHtml from './assets/loading.html';
 import configErrorHtml from './assets/config-error.html';
@@ -215,6 +216,9 @@ app.use('*', async (c, next) => {
 // Mount API routes (protected by Cloudflare Access)
 app.route('/api', api);
 
+// Rate limit admin endpoints: 20 req/min per user
+app.use('/_admin/*', createRateLimiter({ limit: 20, windowMs: 60_000 }));
+
 // Mount Admin UI routes (protected by Cloudflare Access)
 app.route('/_admin', adminUi);
 
@@ -225,6 +229,10 @@ app.use('/debug/*', async (c, next) => {
   }
   return next();
 });
+
+// Rate limit debug endpoints: 10 req/min per user
+app.use('/debug/*', createRateLimiter({ limit: 10, windowMs: 60_000 }));
+
 app.route('/debug', debug);
 
 // =============================================================================

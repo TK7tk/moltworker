@@ -3,10 +3,10 @@ import { buildEnvVars } from './env';
 import { createMockEnv } from '../test-utils';
 
 describe('buildEnvVars', () => {
-  it('returns empty object when no env vars set', () => {
+  it('returns only ALLOW_INSECURE_AUTH when no env vars set', () => {
     const env = createMockEnv();
     const result = buildEnvVars(env);
-    expect(result).toEqual({});
+    expect(result).toEqual({ ALLOW_INSECURE_AUTH: 'false' });
   });
 
   it('includes ANTHROPIC_API_KEY when set directly', () => {
@@ -155,10 +155,64 @@ describe('buildEnvVars', () => {
     const result = buildEnvVars(env);
 
     // MOLTBOT_GATEWAY_TOKEN is mapped to OPENCLAW_GATEWAY_TOKEN for container auth
+    // ALLOW_INSECURE_AUTH is 'true' because gateway token is set
     expect(result).toEqual({
       ANTHROPIC_API_KEY: 'sk-key',
       OPENCLAW_GATEWAY_TOKEN: 'token',
       TELEGRAM_BOT_TOKEN: 'tg',
+      ALLOW_INSECURE_AUTH: 'true',
+    });
+  });
+
+  // ALLOW_INSECURE_AUTH conditional logic
+  describe('ALLOW_INSECURE_AUTH', () => {
+    it('is "true" when CF Access is configured (TEAM_DOMAIN + AUD)', () => {
+      const env = createMockEnv({
+        CF_ACCESS_TEAM_DOMAIN: 'myteam.cloudflareaccess.com',
+        CF_ACCESS_AUD: 'aud-tag-123',
+      });
+      const result = buildEnvVars(env);
+      expect(result.ALLOW_INSECURE_AUTH).toBe('true');
+    });
+
+    it('is "true" when gateway token is set', () => {
+      const env = createMockEnv({
+        MOLTBOT_GATEWAY_TOKEN: 'my-token',
+      });
+      const result = buildEnvVars(env);
+      expect(result.ALLOW_INSECURE_AUTH).toBe('true');
+    });
+
+    it('is "true" when both CF Access and gateway token are set', () => {
+      const env = createMockEnv({
+        CF_ACCESS_TEAM_DOMAIN: 'myteam.cloudflareaccess.com',
+        CF_ACCESS_AUD: 'aud-tag-123',
+        MOLTBOT_GATEWAY_TOKEN: 'my-token',
+      });
+      const result = buildEnvVars(env);
+      expect(result.ALLOW_INSECURE_AUTH).toBe('true');
+    });
+
+    it('is "false" when neither CF Access nor gateway token is set', () => {
+      const env = createMockEnv();
+      const result = buildEnvVars(env);
+      expect(result.ALLOW_INSECURE_AUTH).toBe('false');
+    });
+
+    it('is "false" when only TEAM_DOMAIN is set (AUD missing)', () => {
+      const env = createMockEnv({
+        CF_ACCESS_TEAM_DOMAIN: 'myteam.cloudflareaccess.com',
+      });
+      const result = buildEnvVars(env);
+      expect(result.ALLOW_INSECURE_AUTH).toBe('false');
+    });
+
+    it('is "false" when only AUD is set (TEAM_DOMAIN missing)', () => {
+      const env = createMockEnv({
+        CF_ACCESS_AUD: 'aud-tag-123',
+      });
+      const result = buildEnvVars(env);
+      expect(result.ALLOW_INSECURE_AUTH).toBe('false');
     });
   });
 });
